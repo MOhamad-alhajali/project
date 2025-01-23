@@ -1,0 +1,335 @@
+---
+- name: Create Azure Infrastructure and Configure Services
+  hosts: localhost
+  connection: local
+  vars:
+    resource_group: A2S2_groep_02
+    location: westeurope
+    vm_size: Standard_B1ms
+    subnet: 10.0.1.0/24
+    network_prefix: 10.0.0.0/16
+    admin_username: Feras
+    ssh_key_path: "/home/{{ admin_username }}/.ssh/authorized_keys"
+    ssh_key_data: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOREr4boBdRZUSXrU8dlEvdhd+CyOzdkSGR/NNyxs6gG marcel@marcel"
+
+  tasks:
+    # Create Resource Group
+    - name: Create resource group
+      azure_rm_resourcegroup:
+        name: "{{ resource_group }}"
+        location: "{{ location }}"
+
+    # Create Virtual Network
+    - name: Create virtual network
+      azure_rm_virtualnetwork:
+        resource_group: "{{ resource_group }}"
+        name: myVnet
+        address_prefixes: "{{ network_prefix }}"
+
+    # Create Subnet
+    - name: Add subnet
+      azure_rm_subnet:
+        resource_group: "{{ resource_group }}"
+        name: mySubnet
+        address_prefix: "{{ subnet }}"
+        virtual_network: myVnet
+
+    # Create Network Security Group with SSH access
+    - name: Create Network Security Group that allows SSH
+      azure_rm_securitygroup:
+        resource_group: "{{ resource_group }}"
+        name: myNetworkSecurityGroup
+        rules:
+          - name: SSH
+            protocol: Tcp
+            destination_port_range: 22
+            access: Allow
+            priority: 1001
+            direction: Inbound
+
+    # Create Public IP for Frontend VM
+    - name: Create public IP for Frontend VM
+      azure_rm_publicipaddress:
+        resource_group: "{{ resource_group }}"
+        allocation_method: Static
+        name: myPublicIP-frontend
+      register: frontend_ip
+
+    - name: Debug public IP for Frontend VM
+      debug:
+        var: frontend_ip
+
+    # Create Network Interface for Frontend VM
+    - name: Create network interface for Frontend VM
+      azure_rm_networkinterface:
+        resource_group: "{{ resource_group }}"
+        name: myNIC-frontend
+        virtual_network: myVnet
+        subnet: mySubnet
+        security_group: myNetworkSecurityGroup
+        ip_forwarding: true
+        ip_configurations:
+          - name: myNICipconfig
+            public_ip_address_name: "{{ frontend_ip.state.name }}"
+            primary: true
+
+    # Create Public IP for Backend VM
+    - name: Create public IP for Backend VM
+      azure_rm_publicipaddress:
+        resource_group: "{{ resource_group }}"
+        allocation_method: Static
+        name: myPublicIP-backend
+      register: backend_ip
+
+    - name: Debug public IP for Backend VM
+      debug:
+        var: backend_ip
+
+    # Create Network Interface for Backend VM
+    - name: Create network interface for Backend VM
+      azure_rm_networkinterface:
+        resource_group: "{{ resource_group }}"
+        name: myNIC-backend
+        virtual_network: myVnet
+        subnet: mySubnet
+        security_group: myNetworkSecurityGroup
+        ip_forwarding: true
+        ip_configurations:
+          - name: myNICipconfig
+            public_ip_address_name: "{{ backend_ip.state.name }}"
+            primary: true
+
+    # Create Public IP for Redis VM
+    - name: Create public IP for Redis VM
+      azure_rm_publicipaddress:
+        resource_group: "{{ resource_group }}"
+        allocation_method: Static
+        name: myPublicIP-redis
+      register: redis_ip
+
+    - name: Debug public IP for Redis VM
+      debug:
+        var: redis_ip
+
+    # Create Network Interface for Redis VM
+    - name: Create network interface for Redis VM
+      azure_rm_networkinterface:
+        resource_group: "{{ resource_group }}"
+        name: myNIC-redis
+        virtual_network: myVnet
+        subnet: mySubnet
+        security_group: myNetworkSecurityGroup
+        ip_forwarding: true
+        ip_configurations:
+          - name: myNICipconfig
+            public_ip_address_name: "{{ redis_ip.state.name }}"
+            primary: true
+
+    # Create Public IP for MariaDB VM
+    - name: Create public IP for MariaDB VM
+      azure_rm_publicipaddress:
+        resource_group: "{{ resource_group }}"
+        allocation_method: Static
+        name: myPublicIP-mariadb
+      register: mariadb_ip
+
+    - name: Debug public IP for MariaDB VM
+      debug:
+        var: mariadb_ip
+
+    # Create Network Interface for MariaDB VM
+    - name: Create network interface for MariaDB VM
+      azure_rm_networkinterface:
+        resource_group: "{{ resource_group }}"
+        name: myNIC-mariadb
+        virtual_network: myVnet
+        subnet: mySubnet
+        security_group: myNetworkSecurityGroup
+        ip_forwarding: true
+        ip_configurations:
+          - name: myNICipconfig
+            public_ip_address_name: "{{ mariadb_ip.state.name }}"
+            primary: true
+
+    # Create Public IP for Monitoring VM
+    - name: Create public IP for Monitoring VM
+      azure_rm_publicipaddress:
+        resource_group: "{{ resource_group }}"
+        allocation_method: Static
+        name: myPublicIP-monitoring
+      register: monitoring_ip
+
+    - name: Debug public IP for Monitoring VM
+      debug:
+        var: monitoring_ip
+
+    # Create Network Interface for Monitoring VM
+    - name: Create network interface for Monitoring VM
+      azure_rm_networkinterface:
+        resource_group: "{{ resource_group }}"
+        name: myNIC-monitoring
+        virtual_network: myVnet
+        subnet: mySubnet
+        security_group: myNetworkSecurityGroup
+        ip_forwarding: true
+        ip_configurations:
+          - name: myNICipconfig
+            public_ip_address_name: "{{ monitoring_ip.state.name }}"
+            primary: true
+
+    # Create VPN VM Setup
+    - name: Create public IP for VPN VM
+      azure_rm_publicipaddress:
+        resource_group: "{{ resource_group }}"
+        allocation_method: Static
+        name: vpnPublicIP
+      register: vpn_public_ip
+
+    - name: Debug public IP for VPN VM
+      debug:
+        var: vpn_public_ip
+
+    - name: Create subnet for VPN VM
+      azure_rm_subnet:
+        resource_group: "{{ resource_group }}"
+        virtual_network: myVnet
+        name: vpnSubnet
+        address_prefix: 10.0.2.0/24
+
+    - name: Create Network Security Group for VPN VM
+      azure_rm_securitygroup:
+        resource_group: "{{ resource_group }}"
+        name: vpnNetworkSecurityGroup
+        rules:
+          - name: AllowSSH
+            protocol: Tcp
+            destination_port_range: 22
+            access: Allow
+            priority: 1001
+            direction: Inbound
+          - name: AllowOpenVPN
+            protocol: Udp
+            destination_port_range: 1194
+            access: Allow
+            priority: 1002
+            direction: Inbound
+
+    - name: Create network interface for VPN VM
+      azure_rm_networkinterface:
+        resource_group: "{{ resource_group }}"
+        name: vpnNIC
+        virtual_network: myVnet
+        subnet: vpnSubnet
+        security_group: vpnNetworkSecurityGroup
+        ip_configurations:
+          - name: vpnNICConfig
+            public_ip_address_name: "{{ vpn_public_ip.state.name }}"
+            primary: true
+
+    - name: Create VPN VM
+      azure_rm_virtualmachine:
+        resource_group: "{{ resource_group }}"
+        name: vpn-vm
+        vm_size: "{{ vm_size }}"
+        admin_username: "{{ admin_username }}"
+        ssh_password_enabled: false
+        ssh_public_keys:
+          - path: "{{ ssh_key_path }}"
+            key_data: "{{ ssh_key_data }}"
+        network_interfaces: vpnNIC
+        image:
+          offer: "0001-com-ubuntu-server-focal-daily"
+          publisher: "Canonical"
+          sku: "20_04-daily-lts-gen2"
+          version: latest
+
+    - name: Install and configure firewall (ufw) on VPN VM
+      ansible.builtin.apt:
+        name: ufw
+        state: present
+      become: true
+
+    - name: Allow SSH and OpenVPN ports through firewall
+      community.general.ufw:
+        rule: allow
+        proto: "{{ item.proto }}"
+        port: "{{ item.port }}"
+      loop:
+        - { proto: "tcp", port: "22" }         # SSH
+        - { proto: "udp", port: "1194" }       # OpenVPN
+      become: true
+
+    - name: Enable UFW on VPN VM
+      community.general.ufw:
+        state: enabled
+      become: true
+
+    - name: Install OpenVPN on VPN VM
+      ansible.builtin.shell:
+        cmd: |
+          sudo apt update
+          sudo apt install openvpn -y
+          sudo systemctl enable openvpn@server
+          sudo systemctl start openvpn@server
+
+    - name: Configure OpenVPN server
+      copy:
+        dest: /etc/openvpn/server.conf
+        content: |
+          port 1194
+          proto udp
+          dev tun
+          ca /etc/openvpn/ca.crt
+          cert /etc/openvpn/server.crt
+          key /etc/openvpn/server.key
+          dh /etc/openvpn/dh2048.pem
+          server 10.8.0.0 255.255.255.0
+          ifconfig-pool-persist ipp.txt
+          push "redirect-gateway def1 bypass-dhcp"
+          push "dhcp-option DNS 8.8.8.8"
+          push "dhcp-option DNS 8.8.4.4"
+          keepalive 10 120
+          cipher AES-256-CBC
+          user nobody
+          group nogroup
+          persist-key
+          persist-tun
+          status openvpn-status.log
+          log-append /var/log/openvpn.log
+          verb 3
+      become: true
+
+    - name: Restart OpenVPN to apply configuration
+      ansible.builtin.systemd:
+        name: openvpn@server
+        state: restarted
+      become: true
+
+    # Install Redis on Redis VM
+    - name: Install Redis on Redis VM
+      ansible.builtin.shell:
+        cmd: |
+          sudo apt update
+          sudo apt install redis-server -y
+          sudo systemctl enable redis-server.service
+          sudo systemctl start redis-server.service
+
+    # Install MariaDB on MariaDB VM
+    - name: Install MariaDB on MariaDB VM
+      ansible.builtin.shell:
+        cmd: |
+          sudo apt update
+          sudo apt install mariadb-server -y
+          sudo systemctl enable mariadb
+          sudo systemctl start mariadb
+
+    # Install Prometheus and Grafana on Monitoring VM
+    - name: Install Prometheus and Grafana
+      ansible.builtin.shell:
+        cmd: |
+          sudo apt update
+          sudo apt install prometheus grafana -y
+          sudo systemctl enable prometheus
+          sudo systemctl start prometheus
+          sudo systemctl enable grafana-server
+          sudo systemctl start grafana-server
