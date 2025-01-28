@@ -1,0 +1,83 @@
+---
+- name: Install Traefik with Docker
+  hosts: traefik_hosts
+  become: true
+
+  vars:
+    traefik_image: "traefik:v2.10.0"
+    traefik_dashboard_port: 8081
+    traefik_http_port: 8082
+    traefik_https_port: 443
+    traefik_config_dir: "/etc/traefik"
+    traefik_container_name: "traefik_proxy"
+
+  tasks:
+    - name: Install Docker (if not installed)
+      apt:
+        name: docker.io
+        state: present
+        update_cache: true
+
+    - name: Start and enable Docker service
+      systemd:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Create Traefik configuration directory
+      file:
+        path: "{{ traefik_config_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Create Traefik dynamic configuration file
+      copy:
+        dest: "{{ traefik_config_dir }}/traefik.yml"
+        content: |
+          entryPoints:
+            web:
+              address: ":{{ traefik_http_port }}"
+            websecure:
+              address: ":{{ traefik_https_port }}"
+            dashboard:
+              address: ":{{ traefik_dashboard_port }}
+
+          api:
+            dashboard: true
+            insecure: true
+
+          providers:
+            docker:
+              endpoint: "unix:///var/run/docker.sock"
+
+    - name: Start Traefik container
+      docker_container:
+        name: "{{ traefik_container_name }}"
+        image: "{{ traefik_image }}"
+        state: started
+        restart_policy: always
+        ports:
+          - "{{ traefik_http_port }}:8082"
+          - "{{ traefik_https_port }}:443"
+          - "{{ traefik_dashboard_port }}:8081"
+          - "80:80"
+        volumes:
+          - "/var/run/docker.sock:/var/run/docker.sock"
+          - "{{ traefik_config_dir }}:/etc/traefik"
+        labels:
+          traefik.enable: "true"
+          traefik.http.routers.dashboard.rule: "Host(`traefik.local`)"
+          traefik.http.routers.dashboard.service: "api@internal"
+          traefik.http.routers.dashboard.entrypoints: "dashboard"
+
+    - name: Verify Traefik is running
+      shell: "docker ps | grep '{{ traefik_container_name }}'"
+      register: traefik_status
+      failed_when: "traefik_status.stdout == ''"
+      changed_when: false
+
+    - name: Output the dashboard URL
+      debug:
+        msg: "Traefik dashboard is accessible at: http://{{ ansible_host }}:{{ traefik_dashboard_port }}"
